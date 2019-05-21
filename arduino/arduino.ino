@@ -60,9 +60,9 @@ void ISR_Timer1 ()
       if (sampling_result < sampling_results_threshold) {
         if (millis() - sampling_last_time_ms > TIME_BETWEEN_BLINKS) {
           Serial.println("Blink!!!!!");
-          state_eye_open = false;
           sampling_results_threshold = sampling_results_average + SAMPLING_MARGIN;
         }
+        state_eye_open = false;
       }
       else {
         sampling_results_threshold = sampling_results_average - SAMPLING_MARGIN;
@@ -70,9 +70,9 @@ void ISR_Timer1 ()
       break;
     case false:
       if (sampling_result > sampling_results_threshold) {
-        state_eye_open = true;
         sampling_results_threshold = sampling_results_average - SAMPLING_MARGIN;
         sampling_last_time_ms = millis();
+        state_eye_open = true;
       }
       else {
         sampling_results_threshold = sampling_results_average + SAMPLING_MARGIN;
