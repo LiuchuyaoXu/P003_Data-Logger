@@ -1,12 +1,18 @@
-function [y,readings]=checkblink(ardu,check_duration,prev_readings,blink_between)
+function [y,readings]=checkblink(ardu,check_duration,prev_readings,blink_between,h,ax,startTime)
 readings=prev_readings;
-%x=linspace(1,check_duration,check_duration);
 for i=1:check_duration
-    if blink_between>150
-        fwrite(ardu,'1','uchar');
+    if blink_between > 400
+        %fwrite(ardu,'1','uchar');
     end
     k=fscanf(ardu);
-    readings(i+2)=str2num(k);
+    readings(i+2)=str2double(k);
+    t =  datetime('now') - startTime;
+    % Add points to animation
+    addpoints(h,datenum(t),readings(i+2))
+    % Update axes
+    ax.XLim = datenum([t-seconds(15) t]);
+    datetick('x','keeplimits')
+    drawnow limitrate
 end
 
 r_negated=-1*readings;
@@ -18,16 +24,5 @@ if length(pks)==1
 else
     y=0;
 end
-
-% rfilter = medfilt1(r,10,'truncate');
-% changepoints=findchangepts(rfilter,'Statistic','linear','MinThreshold',200);
-% 
-% if length(changepoints)<3
-%     y=0;
-% elseif length(changepoints)==3
-%     y=1;
-% else
-%     y=2;
-% end
 
 end
