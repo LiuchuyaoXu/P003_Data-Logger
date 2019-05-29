@@ -7,7 +7,7 @@
 #define TIME_BETWEEN_BLINKS         1000                                // Minimum time between blinks captures in miliseconds.
 
 #define SAMPLING_INPUT    A3  // ADC sampling input pin.
-#define BUZZER_OUTPUT     8   // Buzzer output pin.
+#define BUZZER_OUTPUT     9   // Buzzer output pin.
 
 void ISR_Timer1 ();
 
@@ -38,14 +38,31 @@ void setup()
 
 void loop()
 {
-  if (Serial.available()){
-    char command = Serial.read();
-//    Serial.println(command);
-    if (command == '1') {
-      tone(BUZZER_OUTPUT, 2048, 10);
-//      for (int i = 0; i < 2048; i++) {
-//        tone(BUZZER_OUTPUT, i, 50);
-//      }
+//  if (Serial.available()) {
+//    char command = Serial.read();
+////    Serial.println(command);
+//    if (command == '1') {
+//      tone(BUZZER_OUTPUT, 2048, 10);
+////      for (int i = 0; i < 2048; i++) {
+////        tone(BUZZER_OUTPUT, i, 50);
+////      }
+//    }
+//  }
+
+  if (Serial.available()) {
+    int i = 0;
+    char command[7];
+    command[0] = Serial.read();
+    if (command[0] == '1') {
+      i++;
+      while (i < 7) {
+        if (Serial.available()) {
+          command[i] = Serial.read();
+          i++;
+        }
+      }
+      int frequency = (command[2] - '0') * 1000 + (command[3] - '0') * 100 + (command[4] - '0') * 10 + (command[5] - '0');
+      tone(BUZZER_OUTPUT, frequency, 10);
     }
   }
 }
@@ -63,6 +80,7 @@ void ISR_Timer1 ()
 //  sampling_results_average = sampling_results_total / SAMPLING_NUMBER_OF_SAMPLES;
 
   Serial.println(sampling_result);
+  Serial.println('\n');
 
 //  switch (state_eye_open) {
 //    case true:
