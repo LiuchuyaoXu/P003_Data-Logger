@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <termios.h>
 
-#include <GL/glut.h>
+#include "sliding_dft.hpp"
 
 using namespace std;
 
@@ -17,7 +17,7 @@ int open_serial_port()
 
     // Open serial port.
     // For serial port options, read Advanced Programming in the UNIX Environment Chapter 3 File I/O.
-    char serial_port[] {"/dev/ttyACM0"};
+    char serial_port[] {"/dev/ttyACM1"};
     int serial_port_options {O_RDWR | O_NOCTTY};
     int fd {open(serial_port, serial_port_options)};
     if (fd == -1) {cout << "Failed, could not open " << serial_port << "." << endl;}
@@ -68,35 +68,24 @@ int read_serial_port(int fd)
     return result;
 }
 
-void gui_display(void)
-{
-    glClear(GL_COLOR_BUFFER_BIT);
-    glBegin(GL_POLYGON);
-        glVertex3f(0.5, 0.0, 0.5);
-        glVertex3f(0.5, 0.0, 0.0);
-        glVertex3f(0.0, 0.5, 0.0);
-        glVertex3f(0.0, 0.0, 0.5);
-    glEnd();
-    glFlush();
-}
-
 int main(int argc, char** argv)
 {
-    glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_SINGLE);
-    glutInitWindowSize(400, 300);
-    glutInitWindowPosition(100, 100);
-    glutCreateWindow("Hello world!");
-    glutDisplayFunc(gui_display);
-    glutMainLoop();
-
     // Open the Arduino serial port.
     auto fd = open_serial_port();
 
+    // Discard invalid readings from Arduino.
+    while (read_serial_port(fd) < 0) {
+        cout << "Discarded, invalid reading from Arduino." << endl;
+    }
+
     int reading {};
+    static SlidingDFT<double, 512> dft;
+    complex<double> DC_bin;
     while (1) {
         reading = read_serial_port(fd);
-        if (reading != -1) {cout << reading << endl;}
+        dft.update(double(reading));
+        DC_bin = dft.dft[250];
+        cout << abs(DC_bin) << endl;
     }
 
     // Close the Arduino serial port.
