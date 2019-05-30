@@ -1,9 +1,10 @@
 #include <iostream>
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <termios.h>
-// #include <fstream>
-// #include <string>
+
+#include <GL/glut.h>
 
 using namespace std;
 
@@ -67,8 +68,28 @@ int read_serial_port(int fd)
     return result;
 }
 
-int main()
+void gui_display(void)
 {
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBegin(GL_POLYGON);
+        glVertex3f(0.5, 0.0, 0.5);
+        glVertex3f(0.5, 0.0, 0.0);
+        glVertex3f(0.0, 0.5, 0.0);
+        glVertex3f(0.0, 0.0, 0.5);
+    glEnd();
+    glFlush();
+}
+
+int main(int argc, char** argv)
+{
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_SINGLE);
+    glutInitWindowSize(400, 300);
+    glutInitWindowPosition(100, 100);
+    glutCreateWindow("Hello world!");
+    glutDisplayFunc(gui_display);
+    glutMainLoop();
+
     // Open the Arduino serial port.
     auto fd = open_serial_port();
 
