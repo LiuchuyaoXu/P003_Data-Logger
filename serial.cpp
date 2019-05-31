@@ -17,7 +17,7 @@ int open_serial_port()
 
     // Open serial port.
     // For serial port options, read Advanced Programming in the UNIX Environment Chapter 3 File I/O.
-    char serial_port[] {"/dev/ttyACM1"};
+    char serial_port[] {"/dev/ttyACM2"};
     int serial_port_options {O_RDWR | O_NOCTTY};
     int fd {open(serial_port, serial_port_options)};
     if (fd == -1) {cout << "Failed, could not open " << serial_port << "." << endl;}
