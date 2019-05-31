@@ -7,11 +7,7 @@ using namespace std;
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 
-// Global variables.
-GLuint program;
-GLint attribute_coord2d;
-
-bool gui_init_resources(void)
+pair<GLuint, GLint> gui_init_resources(void)
 {
     GLint compile_ok {GL_FALSE};
     GLint link_ok {GL_FALSE};
@@ -31,7 +27,7 @@ bool gui_init_resources(void)
 	glGetShaderiv(vs, GL_COMPILE_STATUS, &compile_ok);
 	if (!compile_ok) {
 		cerr << "Failed, could not compile vertex shader." << endl;
-		return false;
+		return {make_pair(-1, -1)};
 	}
 
     // Compile GLSL fragment shader.
@@ -50,39 +46,40 @@ bool gui_init_resources(void)
 	glGetShaderiv(fs, GL_COMPILE_STATUS, &compile_ok);
 	if (!compile_ok) {
 		cerr << "Failed, could not compile fragment shader." << endl;
-		return false;
+		return {make_pair(-1, -1)};
     }
 
     // Link GLSL objectives.
-    program = glCreateProgram();
-	glAttachShader(program, vs);
-	glAttachShader(program, fs);
-	glLinkProgram(program);
-	glGetProgramiv(program, GL_LINK_STATUS, &link_ok);
+    GLuint gui_program {glCreateProgram()};
+	glAttachShader(gui_program, vs);
+	glAttachShader(gui_program, fs);
+	glLinkProgram(gui_program);
+	glGetProgramiv(gui_program, GL_LINK_STATUS, &link_ok);
 	if (!link_ok) {
 		cerr << "Failed, could not run glLinkProgram." << endl;
-		return false;
+		return {make_pair(-1, -1)};
 	}
 
     // Bind name to the GLSL program.
-    const char* attribute_name {"coord2d"};
-	attribute_coord2d = glGetAttribLocation(program, attribute_name);
-	if (attribute_coord2d == -1) {
-		cerr << "Failed, could not bind attribute " << attribute_name << "." << endl;
-		return false;
+    const char* gui_attribute_name {"coord2d"};
+	GLint gui_attribute {glGetAttribLocation(gui_program, gui_attribute_name)};
+	if (gui_attribute == -1) {
+		cerr << "Failed, could not bind attribute " << gui_attribute_name << "." << endl;
+		return {make_pair(-1, -1)};
 	}
 
-    return true;
+    pair<GLuint, GLint> p {make_pair(gui_program, gui_attribute)};
+    return p;
 }
 
-void gui_render(SDL_Window* window)
+void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
 {
     // Clear the background to white.
 	glClearColor(1.0, 1.0, 1.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glUseProgram(program);
-	glEnableVertexAttribArray(attribute_coord2d);
+	glUseProgram(gui_program);
+	glEnableVertexAttribArray(gui_attribute);
 	GLfloat triangle_vertices[] {
 	    0.0,  0.8,
 	   -0.8, -0.8,
@@ -90,29 +87,29 @@ void gui_render(SDL_Window* window)
 	};
 	// Describe vertices array to OpenGL
 	glVertexAttribPointer(
-		attribute_coord2d, // Attribute.
-		2,                 // Number of elements per vertex, here (x,y).
-		GL_FLOAT,          // Type of each element.
-		GL_FALSE,          // Take our values as-is.
-		0,                 // No extra data between each position.
-		triangle_vertices  // Pointer to the C array.
+		gui_attribute,    // Attribute.
+		2,                // Number of elements per vertex, here (x,y).
+		GL_FLOAT,         // Type of each element.
+		GL_FALSE,         // Take our values as-is.
+		0,                // No extra data between each position.
+		triangle_vertices // Pointer to the C array.
 	);
 
 	// Push elemtns in buffer_vertices to the vertex shader.
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 
-	glDisableVertexAttribArray(attribute_coord2d);
+	glDisableVertexAttribArray(gui_attribute);
 
 	// Display window.
 	SDL_GL_SwapWindow(window);
 }
 
-void gui_free_resources()
+void gui_free_resources(GLuint gui_program)
 {
-    glDeleteProgram(program);
+    glDeleteProgram(gui_program);
 }
 
-void gui_mainloop(SDL_Window* window)
+void gui_mainloop(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
 {
 	while (true) {
 		SDL_Event event;
@@ -120,7 +117,7 @@ void gui_mainloop(SDL_Window* window)
 			if (event.type == SDL_QUIT)
 				return;
 		}
-		gui_render(window);
+		gui_render(window, gui_program, gui_attribute);
 	}
 }
 
@@ -139,13 +136,17 @@ int main(int argc, char* argv[])
 	}
 
     // Initialise GUI resources.
-	if (!gui_init_resources())
-		return EXIT_FAILURE;
+    pair<GLuint, GLint> result = gui_init_resources();
+    GLuint gui_program {result.first};
+    GLint gui_attribute {result.second};
+	if (gui_program == -1 || gui_attribute == -1) {
+        return EXIT_FAILURE;
+    }
 
 	// Display the window.
-	gui_mainloop(window);
+	gui_mainloop(window, gui_program, gui_attribute);
 
     // Free GUI resoureces.
-	gui_free_resources();
+	gui_free_resources(gui_program);
 	return EXIT_SUCCESS;
 }
