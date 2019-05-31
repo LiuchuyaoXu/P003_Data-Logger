@@ -33,13 +33,13 @@ pair<GLuint, GLint> gui_init_resources(void)
     // Compile GLSL fragment shader.
     GLuint fs {glCreateShader(GL_FRAGMENT_SHADER)};
 	const char *fs_source {
-		// "#version 100\n           "  // OpenGL ES 2.0
-		"#version 120\n           "  // OpenGL 2.1
-		"void main(void) {        "
-		"  gl_FragColor[0] = 0.0; "
-		"  gl_FragColor[1] = 0.0; "
-		"  gl_FragColor[2] = 1.0; "
-		"}                        "
+		// "#version 100\n                               "  // OpenGL ES 2.0
+		"#version 120\n                               "  // OpenGL 2.1
+		"void main(void) {                            "
+		"  gl_FragColor[0] = gl_FragCoord.x/640.0;    "
+		"  gl_FragColor[1] = gl_FragCoord.y/480.0;    "
+		"  gl_FragColor[2] = 0.5;                     "
+		"}                                            "
     };
 	glShaderSource(fs, 1, &fs_source, NULL);
 	glCompileShader(fs);
@@ -60,7 +60,7 @@ pair<GLuint, GLint> gui_init_resources(void)
 		return {make_pair(-1, -1)};
 	}
 
-    // Bind name to the GLSL program.
+    // Bind attribute to the GLSL program.
     const char* gui_attribute_name {"coord2d"};
 	GLint gui_attribute {glGetAttribLocation(gui_program, gui_attribute_name)};
 	if (gui_attribute == -1) {
@@ -78,27 +78,69 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
 	glClearColor(1.0, 1.0, 1.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
+    // Set the program and attribute to be used.
 	glUseProgram(gui_program);
 	glEnableVertexAttribArray(gui_attribute);
-	GLfloat triangle_vertices[] {
-	    0.0,  0.8,
-	   -0.8, -0.8,
-	    0.8, -0.8,
-	};
-	// Describe vertices array to OpenGL
-	glVertexAttribPointer(
-		gui_attribute,    // Attribute.
-		2,                // Number of elements per vertex, here (x,y).
-		GL_FLOAT,         // Type of each element.
-		GL_FALSE,         // Take our values as-is.
-		0,                // No extra data between each position.
-		triangle_vertices // Pointer to the C array.
-	);
 
-	// Push elemtns in buffer_vertices to the vertex shader.
-	glDrawArrays(GL_TRIANGLES, 0, 3);
+    struct point {
+        GLfloat x;
+        GLfloat y;
+    };
 
-	glDisableVertexAttribArray(gui_attribute);
+    point graph[2000];
+
+    for(int i = 0; i < 2000; i++) {
+        float x = (i - 1000.0) / 100.0;
+        graph[i].x = x;
+        graph[i].y = sin(x * 10.0) / (1.0 + x * x);
+    }
+
+    GLuint vbo;
+
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(graph), graph, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    glEnableVertexAttribArray(gui_attribute);
+    glVertexAttribPointer(
+        gui_attribute,  // attribute
+        2,              // number of elements per vertex, here (x,y)
+        GL_FLOAT,       // the type of each element
+        GL_FALSE,       // take our values as-is
+        0,              // no space between values
+        0               // use the vertex buffer object
+    );
+
+    glDrawArrays(GL_LINE_LOOP, 0, 2000);
+
+    glDisableVertexAttribArray(gui_attribute);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    // // ***** Draw a triangle.
+    // GLfloat triangle_vertices[] {
+	//     0.0,  0.8,
+	//    -0.8, -0.8,
+	//     0.8, -0.8,
+	// };
+    //
+	// // Describe vertices array to OpenGL.
+	// glVertexAttribPointer(
+	// 	gui_attribute,    // Attribute.
+	// 	2,                // Number of elements per vertex, here (x,y).
+	// 	GL_FLOAT,         // Type of each element.
+	// 	GL_FALSE,         // Take our values as-is.
+	// 	0,                // No extra data between each position.
+	// 	triangle_vertices // Pointer to the C array.
+	// );
+    //
+	// // Push elemtns in buffer_vertices to the vertex shader.
+	// glDrawArrays(GL_TRIANGLES, 0, 3);
+    //
+	// glDisableVertexAttribArray(gui_attribute);
+    // // *****
 
 	// Display window.
 	SDL_GL_SwapWindow(window);
