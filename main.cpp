@@ -158,7 +158,7 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute, poi
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(graph), graph, GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(*graph), *graph, GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
@@ -172,7 +172,7 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute, poi
         0               // use the vertex buffer object
     );
 
-    glDrawArrays(GL_LINE_STRIP, 0, 2000);
+    glDrawArrays(GL_LINE_STRIP, 0, 512);
 
     glDisableVertexAttribArray(gui_attribute);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -262,14 +262,12 @@ int main(int argc, char** argv)
     while (true) {
         reading = read_serial_port(fd);
         dft.update(double(reading));
-
         for(int i = 0; i < 512; i++) {
             DC_bin = dft.dft[i];
-            graph[i].x = i;
-            graph[i].y = abs(DC_bin);
-            cout << i << " " << abs(DC_bin) << endl;
+            graph[i].x = i * 10.0 / 511.0;
+            graph[i].y = abs(DC_bin) / 1000.0;
+            cout << graph[i].x << " " << graph[i].y << " " << reading << endl;
         }
-
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT)

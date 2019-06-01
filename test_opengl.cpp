@@ -7,6 +7,8 @@ using namespace std;
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 
+int ttt {0};
+
 pair<GLuint, GLint> gui_init_resources(void)
 {
     GLint compile_ok {GL_FALSE};
@@ -92,7 +94,18 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
     for(int i = 0; i < 2000; i++) {
         float x = (i - 1000.0) / 100.0;
         graph[i].x = x;
-        graph[i].y = sin(x * 10.0) / (1.0 + x * x);
+        if (ttt == 0) {
+            graph[i].y = 0.9;
+        }
+        else {
+            graph[i].y = 0.2;
+        }
+    }
+    if (ttt == 0) {
+        ttt = 1;
+    }
+    else {
+        ttt = 0;
     }
 
     GLuint vbo;
@@ -100,7 +113,7 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(graph), graph, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(graph), graph, GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
@@ -114,7 +127,7 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
         0               // use the vertex buffer object
     );
 
-    glDrawArrays(GL_LINE_LOOP, 0, 2000);
+    glDrawArrays(GL_LINE_STRIP, 0, 2000);
 
     glDisableVertexAttribArray(gui_attribute);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
