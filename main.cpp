@@ -1,64 +1,71 @@
-#include <cstdlib>
+// C++ standard libraries.
 #include <iostream>
 using namespace std;
 
+// Linux file i/o and terminal i/o.
 #include <fcntl.h>
 #include <unistd.h>
 #include <termios.h>
 
-// Use glew.h instead of gl.h to get all the GL prototypes declared.
-// Use SDL2 for the base window and OpenGL context initialisation.
+// OpenGL libraries.
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 
-#include "sliding_dft.hpp"
+// Discrete Fourier Transfrom library.
+#include "test_dft.hpp"
 
+// Struct for holding the coordinates of a point.
 struct point {
     GLfloat x;
     GLfloat y;
 };
 
-int open_serial_port()
+int serial_open()
 {
-    // Open serial port using C++ standard library.
-    // string serial_port {"/dev/ttyACM0"};
-    // fstream fs {serial_port, ios_base::in};
-    // if (!fs.is_open()) cout << "Failed, could not open " << serial_port << "." << endl;
-
-    // Open serial port.
-    // For serial port options, read Advanced Programming in the UNIX Environment Chapter 3 File I/O.
-    char serial_port[] {"/dev/ttyACM0"};
+    // Serial port name on Linux.
+    // Options for opening the serial port.
+    char serial_port[] {"/dev/ttyACM2"};
     int serial_port_options {O_RDWR | O_NOCTTY};
-    int fd {open(serial_port, serial_port_options)};
-    if (fd == -1) {cout << "Failed, could not open " << serial_port << "." << endl;}
 
-    // Set serial port attributes.
-    // For serial port attributes, read Advanced Programming in the UNIX Environment Chapter 18 Terminal I/O.
+    // Attributes of the serial port.
+    long serial_port_cflags {B9600 | CRTSCTS | CS8 | CLOCAL | CREAD};
+    long serial_port_iflags {IGNPAR | ICRNL};
+    long serial_port_oflags {0};
+    long serial_port_lflags {ICANON};
+
+    // Open the serial port.
+    int fd {open(serial_port, serial_port_options)};
+    if (fd == -1) {
+        cout << "Failed, could not open the open the serial port." << endl;
+        return -1;
+    }
+
+    // Configure the serial port attrubutes.
     termios serial_port_attributes {};
     tcgetattr(fd, &serial_port_attributes);
-    serial_port_attributes.c_cflag = B9600 | CRTSCTS | CS8 | CLOCAL | CREAD;
-    serial_port_attributes.c_iflag = IGNPAR | ICRNL;
-    serial_port_attributes.c_oflag = 0;
-    serial_port_attributes.c_lflag = ICANON;
-    int result {tcsetattr(fd, TCSANOW, &serial_port_attributes)};
-    if (result != 0) {cout << "Failed, could not set " << serial_port << " attributes." << endl;}
+    serial_port_attributes.c_cflag = serial_port_cflags;
+    serial_port_attributes.c_iflag = serial_port_iflags;
+    serial_port_attributes.c_oflag = serial_port_oflags;
+    serial_port_attributes.c_lflag = serial_port_lflags;
+    if (tcsetattr(fd, TCSANOW, &serial_port_attributes) == -1) {
+        cout << "Failed, could not set the serial port attributes." << endl;
+        return -1;
+    }
 
     return fd;
 }
 
-void close_serial_port(int fd)
+int serial_read(int fd)
 {
-    close(fd);
-}
-
-int read_serial_port(int fd)
-{
-    // Read from the serial port and fill the buffer.
+    // Read five bytes.
     char buff[5] {};
-    int bytes_read = read(fd, buff, 5);
-    if (bytes_read == -1) {cout << "Failed, could not read from the Arduino." << endl;}
+    int bytes_to_read {5};
+    long bytes_read {read(fd, buff, bytes_to_read)};
+    if (bytes_read == -1) {
+        cout << "Failed, could not read from the serial port." << endl;
+    }
 
-    // Convert the readings into integer.
+    // Convert the reading into integer.
     int result {};
     if (bytes_read == 5) {
         result = (buff[0] - '0') * 1000 + (buff[1] - '0') * 100 + (buff[2] - '0') * 10 + (buff[3] - '0');
@@ -69,13 +76,19 @@ int read_serial_port(int fd)
     else if (bytes_read == 3) {
         result = (buff[0] - '0') * 10 + (buff[1] - '0');
     }
-    else if (bytes_read == 2) {
+    else{
         result = (buff[0] - '0');
     }
-    else {
-        result = -1;
-    }
     return result;
+}
+
+int serial_close(int fd)
+{
+    if (close(fd) == -1) {
+        cout << "Failed, could not close the serial port." << endl;
+        return -1;
+    }
+    return 1;
 }
 
 pair<GLuint, GLint> gui_init_resources(void)
@@ -177,29 +190,6 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute, poi
     glDisableVertexAttribArray(gui_attribute);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    // // ***** Draw a triangle.
-    // GLfloat triangle_vertices[] {
-	//     0.0,  0.8,
-	//    -0.8, -0.8,
-	//     0.8, -0.8,
-	// };
-    //
-	// // Describe vertices array to OpenGL.
-	// glVertexAttribPointer(
-	// 	gui_attribute,    // Attribute.
-	// 	2,                // Number of elements per vertex, here (x,y).
-	// 	GL_FLOAT,         // Type of each element.
-	// 	GL_FALSE,         // Take our values as-is.
-	// 	0,                // No extra data between each position.
-	// 	triangle_vertices // Pointer to the C array.
-	// );
-    //
-	// // Push elemtns in buffer_vertices to the vertex shader.
-	// glDrawArrays(GL_TRIANGLES, 0, 3);
-    //
-	// glDisableVertexAttribArray(gui_attribute);
-    // // *****
-
 	// Display window.
 	SDL_GL_SwapWindow(window);
 }
@@ -221,7 +211,7 @@ void gui_mainloop(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
 	}
 }
 
-int main(int argc, char** argv)
+int main()
 {
     // Initialise SDL.
 	SDL_Init(SDL_INIT_VIDEO);
@@ -244,13 +234,7 @@ int main(int argc, char** argv)
     }
 
     // Open the Arduino serial port.
-    int fd = open_serial_port();
-
-    // Discard invalid readings from Arduino.
-    while (read_serial_port(fd) < 0) {
-        cout << "Discarded, invalid reading from Arduino." << endl;
-    }
-
+    int fd = serial_open();
 
     int reading {};
     static SlidingDFT<double, 512> dft;
@@ -258,15 +242,19 @@ int main(int argc, char** argv)
 
     point graph[512];
 
+    while (!dft.is_data_valid()) {
+        reading = serial_read(fd);
+        dft.update(double(reading));
+    }
+
 	// Display the window.
     while (true) {
-        reading = read_serial_port(fd);
+        reading = serial_read(fd);
         dft.update(double(reading));
         for(int i = 0; i < 512; i++) {
             DC_bin = dft.dft[i];
             graph[i].x = i * 10.0 / 511.0;
-            graph[i].y = abs(DC_bin) / 1000.0;
-            cout << graph[i].x << " " << graph[i].y << " " << reading << endl;
+            graph[i].y = abs(DC_bin) / 20000.0;
         }
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -281,7 +269,10 @@ end:
 	gui_free_resources(gui_program);
 
     // Close the Arduino serial port.
-    close_serial_port(fd);
+    if (serial_close(fd) == -1) {
+        cout << "Failed, program terminates." << endl;
+        return -1;
+    }
 
 	return EXIT_SUCCESS;
 }

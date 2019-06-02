@@ -1,13 +1,95 @@
 #include <cstdlib>
+#include <chrono>
 #include <iostream>
 using namespace std;
+using namespace std::chrono;
+
+#include <fcntl.h>
+#include <unistd.h>
+#include <termios.h>
 
 // Use glew.h instead of gl.h to get all the GL prototypes declared.
 // Use SDL2 for the base window and OpenGL context initialisation.
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 
-float ttt {0};
+#include "test_dft.hpp"
+
+struct point {
+    GLfloat x;
+    GLfloat y;
+};
+
+int serial_open()
+{
+    // Serial port name on Linux.
+    // Options for opening the serial port.
+    char serial_port[] {"/dev/ttyACM2"};
+    int serial_port_options {O_RDWR | O_NOCTTY};
+
+    // Attributes of the serial port.
+    long serial_port_cflags {B9600 | CRTSCTS | CS8 | CLOCAL | CREAD};
+    long serial_port_iflags {IGNPAR | ICRNL};
+    long serial_port_oflags {0};
+    long serial_port_lflags {ICANON};
+
+    // Open the serial port.
+    int fd {open(serial_port, serial_port_options)};
+    if (fd == -1) {
+        cout << "Failed, could not open the open the serial port." << endl;
+        return -1;
+    }
+
+    // Configure the serial port attrubutes.
+    termios serial_port_attributes {};
+    tcgetattr(fd, &serial_port_attributes);
+    serial_port_attributes.c_cflag = serial_port_cflags;
+    serial_port_attributes.c_iflag = serial_port_iflags;
+    serial_port_attributes.c_oflag = serial_port_oflags;
+    serial_port_attributes.c_lflag = serial_port_lflags;
+    if (tcsetattr(fd, TCSANOW, &serial_port_attributes) == -1) {
+        cout << "Failed, could not set the serial port attributes." << endl;
+        return -1;
+    }
+
+    return fd;
+}
+
+int serial_close(int fd)
+{
+    if (close(fd) == -1) {
+        cout << "Failed, could not close the serial port." << endl;
+        return -1;
+    }
+    return 1;
+}
+
+int serial_read(int fd)
+{
+    // Read five bytes.
+    char buff[5] {};
+    int bytes_to_read {5};
+    long bytes_read {read(fd, buff, bytes_to_read)};
+    if (bytes_read == -1) {
+        cout << "Failed, could not read from the serial port." << endl;
+    }
+
+    // Convert the reading into integer.
+    int result {};
+    if (bytes_read == 5) {
+        result = (buff[0] - '0') * 1000 + (buff[1] - '0') * 100 + (buff[2] - '0') * 10 + (buff[3] - '0');
+    }
+    else if (bytes_read == 4) {
+        result = (buff[0] - '0') * 100 + (buff[1] - '0') * 10 + (buff[2] - '0');
+    }
+    else if (bytes_read == 3) {
+        result = (buff[0] - '0') * 10 + (buff[1] - '0');
+    }
+    else{
+        result = (buff[0] - '0');
+    }
+    return result;
+}
 
 pair<GLuint, GLint> gui_init_resources(void)
 {
@@ -74,7 +156,7 @@ pair<GLuint, GLint> gui_init_resources(void)
     return p;
 }
 
-void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
+void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute, point (*graph)[512])
 {
     // Clear the background to white.
 	glClearColor(1.0, 1.0, 1.0, 1.0);
@@ -84,31 +166,12 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
 	glUseProgram(gui_program);
 	glEnableVertexAttribArray(gui_attribute);
 
-    struct point {
-        GLfloat x;
-        GLfloat y;
-    };
-
-    point graph[2000];
-
-    for(int i = 0; i < 2000; i++) {
-        float x = (i - 1000.0) / 100.0;
-        graph[i].x = x;
-        graph[i].y = ttt / 2;
-    }
-    if (ttt == 0) {
-        ttt = 1;
-    }
-    else {
-        ttt = 0;
-    }
-
     GLuint vbo;
 
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(graph), graph, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(*graph), *graph, GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
@@ -122,7 +185,7 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
         0               // use the vertex buffer object
     );
 
-    glDrawArrays(GL_LINE_STRIP, 0, 2000);
+    glDrawArrays(GL_LINE_STRIP, 0, 512);
 
     glDisableVertexAttribArray(gui_attribute);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -167,13 +230,13 @@ void gui_mainloop(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
 			if (event.type == SDL_QUIT)
 				return;
 		}
-		gui_render(window, gui_program, gui_attribute);
+		// gui_render(window, gui_program, gui_attribute);
 	}
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char** argv)
 {
-	// Initialise SDL.
+    // Initialise SDL.
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_Window* window {SDL_CreateWindow("Testbed", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL)};
 	SDL_GL_CreateContext(window);
@@ -193,10 +256,50 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
+    // Open the Arduino serial port.
+    int fd = serial_open();
+
+    int reading {};
+    static SlidingDFT<double, 512> dft;
+    complex<double> DC_bin;
+
+    point graph[512];
+
+    while (!dft.is_data_valid()) {
+        reading = serial_read(fd);
+        dft.update(double(reading));
+    }
+
 	// Display the window.
-	gui_mainloop(window, gui_program, gui_attribute);
+    while (true) {
+        // auto t = steady_clock::now();
+        reading = serial_read(fd);
+        dft.update(double(reading));
+        for(int i = 0; i < 512; i++) {
+            DC_bin = dft.dft[i];
+            graph[i].x = i * 10.0 / 511.0;
+            graph[i].y = abs(DC_bin) / 20000.0;
+            // cout << graph[i].x << " " << graph[i].y << " " << reading << endl;
+        }
+        // auto d = steady_clock::now();
+        // cout << duration_cast<milliseconds>(d - t).count() << "ms" << endl;
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT)
+                goto end;
+        }
+        gui_render(window, gui_program, gui_attribute, &graph);
+    }
+end:
 
     // Free GUI resoureces.
 	gui_free_resources(gui_program);
+
+    // Close the Arduino serial port.
+    if (serial_close(fd) == -1) {
+        cout << "Failed, program terminates." << endl;
+        return -1;
+    }
+
 	return EXIT_SUCCESS;
 }
