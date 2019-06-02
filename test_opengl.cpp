@@ -7,7 +7,7 @@ using namespace std;
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 
-int ttt {0};
+float ttt {0};
 
 pair<GLuint, GLint> gui_init_resources(void)
 {
@@ -94,12 +94,7 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
     for(int i = 0; i < 2000; i++) {
         float x = (i - 1000.0) / 100.0;
         graph[i].x = x;
-        if (ttt == 0) {
-            graph[i].y = 0.9;
-        }
-        else {
-            graph[i].y = 0.2;
-        }
+        graph[i].y = ttt / 2;
     }
     if (ttt == 0) {
         ttt = 1;
@@ -107,7 +102,7 @@ void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
     else {
         ttt = 0;
     }
-
+    
     GLuint vbo;
 
     glGenBuffers(1, &vbo);
