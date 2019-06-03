@@ -4,6 +4,8 @@
 #include <string>
 #include <tuple>
 #include <iostream>
+#include <chrono>
+#include <vector>
 using namespace std;
 
 // Linux file i/o and terminal i/o.
@@ -255,6 +257,7 @@ void opengl_render(SDL_Window* window, GLuint shader_program, GLint shader_attri
 	complex<double> dft_value;
 	point graph[512];
 	int reading {};
+	double sum {};
 	do {
 		reading = serial_read(fd);
 		dft.update(double(reading));
@@ -263,7 +266,42 @@ void opengl_render(SDL_Window* window, GLuint shader_program, GLint shader_attri
 		dft_value = dft.dft[i];
 		graph[i].x = (i - 256.0) / 256.0;
 		graph[i].y = abs(dft_value) / 20000.0;
+		sum += graph[i].y;
 	}
+
+	// Really ugly code for detecting a blink and sending warning.
+	sum = sum - graph[0].y - graph[1].y - graph[510].y - graph[511].y;
+	const int sum_threshold {20};
+	static auto last_time = chrono::steady_clock::now();
+	auto this_time = chrono::steady_clock::now();
+	auto duration = chrono::duration_cast<chrono::milliseconds>(this_time - last_time).count();
+	static vector<int> warned(5);
+	if (sum > sum_threshold && duration > 1000) {
+		cout << "Good kid." << endl;
+		last_time = this_time;
+		for (int i {}; i < 5; i++) {warned[i] = 0;}
+	}
+	else if (duration > 30000 && !warned[0]) {
+		cout << "Alright, put that pair of glasses back on." << endl;
+		warned[0] = 1;
+	}
+	else if (duration > 20000 && !warned[1]) {
+		cout << "You are either cheating or you are the god of not blinking." << endl;
+		warned[1] = 1;
+	}
+	else if (duration > 10000 && !warned[2]) {
+		cout << "Mommy will be unhappy if you continue doing this." << endl;
+		warned[2] = 1;
+	}
+	else if (duration > 7500 && !warned[3]) {
+		cout << "It's not too late." << endl;
+		warned[3] = 1;
+	}
+	else if (duration > 5000 && !warned[4]) {
+		cout << "Time to rest your eyes." << endl;
+		warned[4] = 1;
+	}
+	// cout << sum << endl;
 
 	// Push the vertices to the vertex buffer object.
 	glBufferData(GL_ARRAY_BUFFER, sizeof(graph), graph, GL_DYNAMIC_DRAW);

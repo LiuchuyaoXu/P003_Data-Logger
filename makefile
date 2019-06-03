@@ -5,8 +5,8 @@ CXXFLAGS = -O3
 
 OPENGL_LIBS = -lglut -lGLEW -lGL -lSDL2
 
-main.o:
-	$(CXX) $(CXXFLAGS) $(OPENGL_LIBS) -o main.o main.cpp
+# main.o:
+# 	$(CXX) $(CXXFLAGS) $(OPENGL_LIBS) -o main.o main.cpp
 
 test_main.o:
 	$(CXX) $(CXXFLAGS) $(OPENGL_LIBS) -o test_main.o test_main.cpp
