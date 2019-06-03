@@ -1,4 +1,8 @@
 // C++ standard libraries.
+#include <cstdlib>
+#include <fstream>
+#include <string>
+#include <tuple>
 #include <iostream>
 using namespace std;
 
@@ -7,24 +11,18 @@ using namespace std;
 #include <unistd.h>
 #include <termios.h>
 
-// OpenGL libraries.
+// Opengl libraries.
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 
 // Discrete Fourier Transfrom library.
-#include "test_dft.hpp"
-
-// Struct for holding the coordinates of a point.
-struct point {
-    GLfloat x;
-    GLfloat y;
-};
+#include "lib_dft.hpp"
 
 int serial_open()
 {
     // Serial port name on Linux.
     // Options for opening the serial port.
-    char serial_port[] {"/dev/ttyACM2"};
+    char serial_port[] {"/dev/ttyACM0"};
     int serial_port_options {O_RDWR | O_NOCTTY};
 
     // Attributes of the serial port.
@@ -57,7 +55,7 @@ int serial_open()
 
 int serial_read(int fd)
 {
-    // Read five bytes.
+    // Read five bytes or one line if in canonical mode.
     char buff[5] {};
     int bytes_to_read {5};
     long bytes_read {read(fd, buff, bytes_to_read)};
@@ -91,115 +89,208 @@ int serial_close(int fd)
     return 1;
 }
 
-pair<GLuint, GLint> gui_init_resources(void)
+string file_read(string filename)
 {
-    GLint compile_ok {GL_FALSE};
-    GLint link_ok {GL_FALSE};
-
-    // Compile GLSL vertex shader.
-	GLuint vs {glCreateShader(GL_VERTEX_SHADER)};
-	const char *vs_source {
-		// "#version 100\n                         "  // OpenGL ES 2.0
-		"#version 120\n                           "  // OpenGL 2.1
-		"attribute vec2 coord2d;                  "
-		"void main(void) {                        "
-		"  gl_Position = vec4(coord2d, 0.0, 1.0); "
-		"}                                        "
-    };
-	glShaderSource(vs, 1, &vs_source, NULL);
-	glCompileShader(vs);
-	glGetShaderiv(vs, GL_COMPILE_STATUS, &compile_ok);
-	if (!compile_ok) {
-		cerr << "Failed, could not compile vertex shader." << endl;
-		return {make_pair(-1, -1)};
+	// Open the file specified by 'filename'.
+	fstream fs {filename, ios_base::in};
+	if (!fs.is_open()) {
+		cerr << "Failed, could not open " << filename << "." << endl;
+		return "";
 	}
 
-    // Compile GLSL fragment shader.
-    GLuint fs {glCreateShader(GL_FRAGMENT_SHADER)};
-	const char *fs_source {
-		// "#version 100\n                               "  // OpenGL ES 2.0
-		"#version 120\n                               "  // OpenGL 2.1
-		"void main(void) {                            "
-		"  gl_FragColor[0] = gl_FragCoord.x/640.0;    "
-		"  gl_FragColor[1] = gl_FragCoord.y/480.0;    "
-		"  gl_FragColor[2] = 0.5;                     "
-		"}                                            "
-    };
-	glShaderSource(fs, 1, &fs_source, NULL);
-	glCompileShader(fs);
-	glGetShaderiv(fs, GL_COMPILE_STATUS, &compile_ok);
-	if (!compile_ok) {
-		cerr << "Failed, could not compile fragment shader." << endl;
-		return {make_pair(-1, -1)};
-    }
-
-    // Link GLSL objectives.
-    GLuint gui_program {glCreateProgram()};
-	glAttachShader(gui_program, vs);
-	glAttachShader(gui_program, fs);
-	glLinkProgram(gui_program);
-	glGetProgramiv(gui_program, GL_LINK_STATUS, &link_ok);
-	if (!link_ok) {
-		cerr << "Failed, could not run glLinkProgram." << endl;
-		return {make_pair(-1, -1)};
+	// Read from the file.
+	string result {};
+	char x {};
+	while ((x = fs.get()) != EOF) {
+			result += x;
 	}
 
-    // Bind attribute to the GLSL program.
-    const char* gui_attribute_name {"coord2d"};
-	GLint gui_attribute {glGetAttribLocation(gui_program, gui_attribute_name)};
-	if (gui_attribute == -1) {
-		cerr << "Failed, could not bind attribute " << gui_attribute_name << "." << endl;
-		return {make_pair(-1, -1)};
-	}
-
-    pair<GLuint, GLint> p {make_pair(gui_program, gui_attribute)};
-    return p;
+	// Close the file.
+	// Return the result.
+	fs.close();
+	return result;
 }
 
-void gui_render(SDL_Window* window, GLuint gui_program, GLint gui_attribute, point (*graph)[512])
+void opengl_shader_log(GLuint object)
 {
+	GLint log_length = 0;
+
+	// Check the type of the object.
+	if (glIsShader(object)) {
+		glGetShaderiv(object, GL_INFO_LOG_LENGTH, &log_length);
+	}
+	else if (glIsProgram(object)) {
+		glGetProgramiv(object, GL_INFO_LOG_LENGTH, &log_length);
+	}
+	else {
+		cerr << "Failed, object is either a shader nor a program." << endl;
+		return;
+	}
+
+	char* log = (char*)malloc(log_length);
+
+	// Print the log of the object.
+	if (glIsShader(object)) {
+		glGetShaderInfoLog(object, log_length, NULL, log);
+	}
+	else if (glIsProgram(object)) {
+		glGetProgramInfoLog(object, log_length, NULL, log);
+	}
+	cerr << log << endl;
+
+	free(log);
+}
+
+GLuint opengl_create_shader(string filename, GLenum shader_type)
+{
+	// Read the GLSL code from the file.
+	// For description of the GLSL code, read
+	// 	https://en.wikibooks.org/wiki/OpenGL_Programming/Modern_OpenGL_Introduction
+	string shader_code {file_read(filename)};
+	if (shader_code == "") {
+		cerr << "Failed, could not read from " << filename << endl;
+		return -1;
+	}
+	const GLchar* shader_source {shader_code.c_str()};
+
+	// Generate a shader.
+    // Pass the source code string to the shader.
+	GLuint shader {glCreateShader(shader_type)};
+	glShaderSource(shader, 1, &shader_source, NULL);
+
+	// Compile the shader.
+	// Display error log.
+	glCompileShader(shader);
+	GLint compile_ok {GL_FALSE};
+	glGetShaderiv(shader, GL_COMPILE_STATUS, &compile_ok);
+	if (compile_ok == GL_FALSE) {
+		cerr << "Failed, could not compile " << filename << ":" << endl;
+		opengl_shader_log(shader);
+		glDeleteShader(shader);
+		return -1;
+	}
+
+	return shader;
+}
+
+tuple<GLuint, GLint, GLuint> opengl_init_shader()
+{
+	// Create and compile the vertex shader and the fragment shader.
+	GLuint vs {};
+	GLuint fs {};
+	string vs_source_file {"lib_opengl_vs.glsl"};
+	string fs_source_file {"lib_opengl_fs.glsl"};
+	if ((vs = opengl_create_shader(vs_source_file, GL_VERTEX_SHADER))   == -1) {
+		cerr << "Failed, could not create shader from " << vs_source_file << "." << endl;
+		return {make_tuple(-1, -1, -1)};
+	}
+	if ((fs = opengl_create_shader(fs_source_file, GL_FRAGMENT_SHADER)) == -1) {
+		cerr << "Failed, could not create shader from " << fs_source_file << "." << endl;
+		return {make_tuple(-1, -1, -1)};
+	}
+
+    // Link the vertex shader and the fragment shader to form the overall program.
+	GLint link_ok {GL_FALSE};
+    GLuint shader_program {glCreateProgram()};
+	glAttachShader(shader_program, vs);
+	glAttachShader(shader_program, fs);
+	glLinkProgram(shader_program);
+	glGetProgramiv(shader_program, GL_LINK_STATUS, &link_ok);
+	if (!link_ok) {
+		cerr << "Failed, could not link the shader programs: " << endl;
+		opengl_shader_log(shader_program);
+		return {make_tuple(-1, -1, -1)};
+	}
+
+    // Bind the C++ variable 'shader_attribute' to the attribute in the GLSL program
+	//	specified by 'shader_attribute_name'.
+    const char shader_attribute_name[] {"coord2d"};
+    GLint shader_attribute {glGetAttribLocation(shader_program, shader_attribute_name)};
+    if (shader_attribute == -1) {
+        cerr << "Failed, could not bind the shader program attribute." << endl;
+        return {make_tuple(-1, -1, -1)};
+    }
+
+	// Initialise the vertex buffer object.
+	// Generate 1 vbo and make it the current active buffer.
+	// Bind the vbo to the array buffer in the graphic card.
+	GLuint vbo {};
+	glGenBuffers(1, &vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    tuple<GLuint, GLint, GLuint> shader_descriptors {make_tuple(shader_program, shader_attribute, vbo)};
+    return shader_descriptors;
+}
+
+void opengl_free_shader(GLuint shader_program, GLuint vbo)
+{
+    glDeleteProgram(shader_program);
+	glDeleteBuffers(1, &vbo);
+}
+
+void opengl_render(SDL_Window* window, GLuint shader_program, GLint shader_attribute, GLuint vbo, int fd)
+{
+	// // Enable alpha channel for transparency.
+	// // The transparency is determined by the 'gl_FragColor[3]' in the fragment shader GLSL code.
+	// glEnable(GL_BLEND);
+	// glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     // Clear the background to white.
 	glClearColor(1.0, 1.0, 1.0, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-    // Set the program and attribute to be used.
-	glUseProgram(gui_program);
-	glEnableVertexAttribArray(gui_attribute);
+    // Bind the shader program and attribute.
+	glUseProgram(shader_program);
+	glEnableVertexAttribArray(shader_attribute);
 
-    GLuint vbo;
+	// Take a reading from the serial port.
+	// Update the discrete Fourier transform.
+	// Copy values into the vertices array.
+	struct point {
+	    GLfloat x;
+	    GLfloat y;
+	};
+	static SlidingDFT<double, 512> dft;
+	complex<double> dft_value;
+	point graph[512];
+	int reading {};
+	do {
+		reading = serial_read(fd);
+		dft.update(double(reading));
+	} while (!dft.is_data_valid());
+	for (int i {}; i < 512; i++) {
+		dft_value = dft.dft[i];
+		graph[i].x = (i - 256.0) / 256.0;
+		graph[i].y = abs(dft_value) / 20000.0;
+	}
 
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	// Push the vertices to the array buffer in the graphic card, which
+	//	is bound to the vertex buffer object initialised in 'opengl_init_shader'.
+	// GL_STATIC_DRAW indicates that the buffer will not be written to very often, and
+	//	that the GPU should keep a copy of it in its own memory. It is always possible
+	// 	to write new values to the vbo and thus the array buffer. If the data changes
+	// 	once per frame or more often, use GL_DYNAMIC_DRAW or GL_STREAM_DRAW.
+	glBufferData(GL_ARRAY_BUFFER, sizeof(graph), graph, GL_DYNAMIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  	glEnableVertexAttribArray(shader_attribute);
+	// Describe vertices array to OpenGL.
+	glVertexAttribPointer(
+		shader_attribute, // Attribute.
+		2,                // Number of elements per vertex, here (x,y).
+		GL_FLOAT,         // Type of each element.
+		GL_FALSE,         // Take our values as-is.
+		0,                // No extra data between each position.
+		0				  // Offset of the first element.
+	);
+	// Push elemtns in triangle_vertices to the vertex shader.
+	glDrawArrays(GL_LINE_STRIP, 0, 512);
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(*graph), *graph, GL_DYNAMIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-    glEnableVertexAttribArray(gui_attribute);
-    glVertexAttribPointer(
-        gui_attribute,  // attribute
-        2,              // number of elements per vertex, here (x,y)
-        GL_FLOAT,       // the type of each element
-        GL_FALSE,       // take our values as-is
-        0,              // no space between values
-        0               // use the vertex buffer object
-    );
-
-    glDrawArrays(GL_LINE_STRIP, 0, 512);
-
-    glDisableVertexAttribArray(gui_attribute);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-	// Display window.
+    // Display the window.
+	glDisableVertexAttribArray(shader_attribute);
 	SDL_GL_SwapWindow(window);
 }
 
-void gui_free_resources(GLuint gui_program)
-{
-    glDeleteProgram(gui_program);
-}
-
-void gui_mainloop(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
+void opengl_mainloop(SDL_Window* window, GLuint shader_program, GLint shader_attribute, GLuint vbo, int fd)
 {
 	while (true) {
 		SDL_Event event;
@@ -207,72 +298,54 @@ void gui_mainloop(SDL_Window* window, GLuint gui_program, GLint gui_attribute)
 			if (event.type == SDL_QUIT)
 				return;
 		}
-		// gui_render(window, gui_program, gui_attribute);
+		opengl_render(window, shader_program, shader_attribute, vbo, fd);
 	}
 }
 
 int main()
 {
-    // Initialise SDL.
-	SDL_Init(SDL_INIT_VIDEO);
-	SDL_Window* window {SDL_CreateWindow("Testbed", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL)};
-	SDL_GL_CreateContext(window);
-
-	// Initialise extension wrangler.
-	GLenum glew_status {glewInit()};
-	if (glew_status != GLEW_OK) {
-		cerr << "Error: glewInit: " << glewGetErrorString(glew_status) << endl;
+	// Open serial port.
+	int fd {serial_open()};
+	if (fd == -1) {
+		cerr << "Failed, could not open the serial port." << endl;
 		return EXIT_FAILURE;
 	}
 
-    // Initialise GUI resources.
-    pair<GLuint, GLint> result = gui_init_resources();
-    GLuint gui_program {result.first};
-    GLint gui_attribute {result.second};
-	if (gui_program == -1 || gui_attribute == -1) {
+    // Initialise the window.
+	SDL_Init(SDL_INIT_VIDEO);
+	SDL_Window* window {SDL_CreateWindow("DFT Spectrum",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        640, 480,
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL)};
+	SDL_GL_CreateContext(window);
+	// Request an alpha channel for transparency.
+	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 1);
+
+    // Initialise extension wrangler.
+	GLenum glew_status {glewInit()};
+	if (glew_status != GLEW_OK) {
+		cerr << "Failed, glewInit: " << glewGetErrorString(glew_status) << endl;
+		return EXIT_FAILURE;
+	}
+
+    // Initialise shader program and vertex buffer object.
+    tuple<GLuint, GLint, GLuint> shader_descriptors = opengl_init_shader();
+    GLuint shader_program {get<0>(shader_descriptors)};
+    GLint shader_attribute {get<1>(shader_descriptors)};
+	GLuint vbo {get<2>(shader_descriptors)};
+	if (shader_program == -1 || shader_attribute == -1 || vbo == -1) {
+		cerr << "Failed, program terminates." << endl;
         return EXIT_FAILURE;
     }
 
-    // Open the Arduino serial port.
-    int fd = serial_open();
+    // Go into the main loop.
+	opengl_mainloop(window, shader_program, shader_attribute, vbo, fd);
 
-    int reading {};
-    static SlidingDFT<double, 512> dft;
-    complex<double> DC_bin;
+    // Free shader program.
+	opengl_free_shader(shader_program, vbo);
 
-    point graph[512];
-
-    while (!dft.is_data_valid()) {
-        reading = serial_read(fd);
-        dft.update(double(reading));
-    }
-
-	// Display the window.
-    while (true) {
-        reading = serial_read(fd);
-        dft.update(double(reading));
-        for(int i = 0; i < 512; i++) {
-            DC_bin = dft.dft[i];
-            graph[i].x = i * 10.0 / 511.0;
-            graph[i].y = abs(DC_bin) / 20000.0;
-        }
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT)
-                goto end;
-        }
-        gui_render(window, gui_program, gui_attribute, &graph);
-    }
-end:
-
-    // Free GUI resoureces.
-	gui_free_resources(gui_program);
-
-    // Close the Arduino serial port.
-    if (serial_close(fd) == -1) {
-        cout << "Failed, program terminates." << endl;
-        return -1;
-    }
+	// Close serial port.
+	serial_close(fd);
 
 	return EXIT_SUCCESS;
 }
