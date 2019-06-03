@@ -64,6 +64,7 @@ int serial_read(int fd)
     }
 
     // Convert the reading into integer.
+	// This brutal method works because the reading is in canonical mode.
     int result {};
     if (bytes_read == 5) {
         result = (buff[0] - '0') * 1000 + (buff[1] - '0') * 100 + (buff[2] - '0') * 10 + (buff[3] - '0');
@@ -264,12 +265,7 @@ void opengl_render(SDL_Window* window, GLuint shader_program, GLint shader_attri
 		graph[i].y = abs(dft_value) / 20000.0;
 	}
 
-	// Push the vertices to the array buffer in the graphic card, which
-	//	is bound to the vertex buffer object initialised in 'opengl_init_shader'.
-	// GL_STATIC_DRAW indicates that the buffer will not be written to very often, and
-	//	that the GPU should keep a copy of it in its own memory. It is always possible
-	// 	to write new values to the vbo and thus the array buffer. If the data changes
-	// 	once per frame or more often, use GL_DYNAMIC_DRAW or GL_STREAM_DRAW.
+	// Push the vertices to the vertex buffer object.
 	glBufferData(GL_ARRAY_BUFFER, sizeof(graph), graph, GL_DYNAMIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
   	glEnableVertexAttribArray(shader_attribute);
