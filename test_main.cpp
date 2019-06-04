@@ -20,6 +20,11 @@ using namespace std;
 // Discrete Fourier Transfrom library.
 #include "lib_dft.hpp"
 
+struct point {
+    GLfloat x;
+    GLfloat y;
+};
+
 int serial_open()
 {
     // Serial port name on Linux.
@@ -231,7 +236,7 @@ void opengl_free_shader(GLuint shader_program, GLuint vbo)
 	glDeleteBuffers(1, &vbo);
 }
 
-void opengl_render(SDL_Window* window, GLuint shader_program, GLint shader_attribute, GLuint vbo, int fd)
+void opengl_render(SDL_Window* window, GLuint shader_program, GLint shader_attribute, GLuint vbo, float red, vector<point> graph_v)
 {
 	// // Enable alpha channel for transparency.
 	// // The transparency is determined by the 'gl_FragColor[3]' in the fragment shader GLSL code.
@@ -239,69 +244,16 @@ void opengl_render(SDL_Window* window, GLuint shader_program, GLint shader_attri
 	// glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // Clear the background to white.
-	glClearColor(1.0, 1.0, 1.0, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT);
+    glClearColor(red, 0.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     // Bind the shader program and attribute.
 	glUseProgram(shader_program);
 	glEnableVertexAttribArray(shader_attribute);
 
-	// Take a reading from the serial port.
-	// Update the discrete Fourier transform.
-	// Copy values into the vertices array.
-	struct point {
-	    GLfloat x;
-	    GLfloat y;
-	};
-	static SlidingDFT<double, 512> dft;
-	complex<double> dft_value;
-	point graph[512];
-	int reading {};
-	double sum {};
-	do {
-		reading = serial_read(fd);
-		dft.update(double(reading));
-	} while (!dft.is_data_valid());
-	for (int i {}; i < 512; i++) {
-		dft_value = dft.dft[i];
-		graph[i].x = (i - 256.0) / 256.0;
-		graph[i].y = abs(dft_value) / 20000.0;
-		sum += graph[i].y;
-	}
-
-	// Really ugly code for detecting a blink and sending warning.
-	sum = sum - graph[0].y - graph[1].y - graph[510].y - graph[511].y;
-	const int sum_threshold {20};
-	static auto last_time = chrono::steady_clock::now();
-	auto this_time = chrono::steady_clock::now();
-	auto duration = chrono::duration_cast<chrono::milliseconds>(this_time - last_time).count();
-	static vector<int> warned(5);
-	if (sum > sum_threshold && duration > 1000) {
-		cout << "Good kid." << endl;
-		last_time = this_time;
-		for (int i {}; i < 5; i++) {warned[i] = 0;}
-	}
-	else if (duration > 30000 && !warned[0]) {
-		cout << "Alright, put that pair of glasses back on." << endl;
-		warned[0] = 1;
-	}
-	else if (duration > 20000 && !warned[1]) {
-		cout << "You are either cheating or you are the god of not blinking." << endl;
-		warned[1] = 1;
-	}
-	else if (duration > 10000 && !warned[2]) {
-		cout << "Mommy will be unhappy if you continue doing this." << endl;
-		warned[2] = 1;
-	}
-	else if (duration > 7500 && !warned[3]) {
-		cout << "It's not too late." << endl;
-		warned[3] = 1;
-	}
-	else if (duration > 5000 && !warned[4]) {
-		cout << "Time to rest your eyes." << endl;
-		warned[4] = 1;
-	}
-	// cout << sum << endl;
+    int length = graph_v.size();
+    point graph[length];
+    for (int i {}; i < length; i++) {graph[i] = graph_v[i];}
 
 	// Push the vertices to the vertex buffer object.
 	glBufferData(GL_ARRAY_BUFFER, sizeof(graph), graph, GL_DYNAMIC_DRAW);
@@ -317,7 +269,7 @@ void opengl_render(SDL_Window* window, GLuint shader_program, GLint shader_attri
 		0				  // Offset of the first element.
 	);
 	// Push elemtns in triangle_vertices to the vertex shader.
-	glDrawArrays(GL_LINE_STRIP, 0, 512);
+	glDrawArrays(GL_LINE_STRIP, 0, length);
 
     // Display the window.
 	glDisableVertexAttribArray(shader_attribute);
@@ -327,12 +279,70 @@ void opengl_render(SDL_Window* window, GLuint shader_program, GLint shader_attri
 void opengl_mainloop(SDL_Window* window, GLuint shader_program, GLint shader_attribute, GLuint vbo, int fd)
 {
 	while (true) {
+        static float red {};
+        // Take a reading from the serial port.
+        // Update the discrete Fourier transform.
+        // Copy values into the vertices array.;
+        static SlidingDFT<double, 100> dft;
+        complex<double> dft_value;
+        vector<point> graph(48);
+        int reading {};
+        double sum {};
+        do {
+            reading = serial_read(fd);
+            dft.update(double(reading));
+        } while (!dft.is_data_valid());
+        for (int i {}; i < 48; i++) {
+            dft_value = dft.dft[i + 2];
+            graph[i].x = (i - 23.0) / 23.0;
+            graph[i].y = abs(dft_value) / 2000.0;
+            sum += graph[i].y;
+        }
+        // Really ugly code for detecting a blink and sending warning.
+        static int state {0};
+        const int sum_threshold {1};
+        static auto last_time = chrono::steady_clock::now();
+        auto this_time = chrono::steady_clock::now();
+        auto duration = chrono::duration_cast<chrono::milliseconds>(this_time - last_time).count();
+        static vector<int> warned(4);
+        if (state == 0 && sum > sum_threshold) {
+            cout << "Good kid." << endl;
+            last_time = this_time;
+            for (int i {}; i < 5; i++) {warned[i] = 0;}
+            red = 0;
+            state = 1;
+        }
+        else if (duration > 30000 && !warned[0]) {
+            cout << "30s no blinking, damage level: DRAGON." << endl;
+            warned[0] = 1;
+            red = 1.0;
+        }
+        else if (duration > 20000 && !warned[1]) {
+            cout << "20s no blinking, damage level: GHOST." << endl;
+            warned[1] = 1;
+            red = 0.75;
+        }
+        else if (duration > 10000 && !warned[2]) {
+            cout << "10s no blinking, damage level: TIGER." << endl;
+            warned[2] = 1;
+            red = 0.5;
+        }
+        else if (duration > 5000 && !warned[3]) {
+            cout << "05s no blinking, damage level: SNAKE." << endl;
+            warned[3] = 1;
+            red = 0.25;
+        }
+        if (state == 1 && sum < sum_threshold) {
+            state = 0;
+        }
+        // cout << sum << endl;
+
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_QUIT)
 				return;
 		}
-		opengl_render(window, shader_program, shader_attribute, vbo, fd);
+		opengl_render(window, shader_program, shader_attribute, vbo, red, graph);
 	}
 }
 
