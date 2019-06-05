@@ -300,36 +300,41 @@ void opengl_mainloop(SDL_Window* window, GLuint shader_program, GLint shader_att
         }
         // Really ugly code for detecting a blink and sending warning.
         static int state {0};
-        const int sum_threshold {1};
+        const int sum_threshold {5};
         static auto last_time = chrono::steady_clock::now();
         auto this_time = chrono::steady_clock::now();
         auto duration = chrono::duration_cast<chrono::milliseconds>(this_time - last_time).count();
-        static vector<int> warned(4);
-        if (state == 0 && sum > sum_threshold) {
+        static vector<int> warned(5);
+        if (state == 0 && sum > sum_threshold && duration > 1000) {
             cout << "Good kid." << endl;
             last_time = this_time;
             for (int i {}; i < 5; i++) {warned[i] = 0;}
             red = 0;
             state = 1;
         }
-        else if (duration > 30000 && !warned[0]) {
-            cout << "30s no blinking, damage level: DRAGON." << endl;
+        else if (duration > 60000 && !warned[0]) {
+            cout << "60s no blinking, damage level: GOD." << endl;
             warned[0] = 1;
             red = 1.0;
         }
-        else if (duration > 20000 && !warned[1]) {
-            cout << "20s no blinking, damage level: GHOST." << endl;
+        else if (duration > 30000 && !warned[1]) {
+            cout << "30s no blinking, damage level: DRAGON." << endl;
             warned[1] = 1;
+            red = 1.0;
+        }
+        else if (duration > 20000 && !warned[2]) {
+            cout << "20s no blinking, damage level: DEMON." << endl;
+            warned[2] = 1;
             red = 0.75;
         }
-        else if (duration > 10000 && !warned[2]) {
+        else if (duration > 10000 && !warned[3]) {
             cout << "10s no blinking, damage level: TIGER." << endl;
-            warned[2] = 1;
+            warned[3] = 1;
             red = 0.5;
         }
-        else if (duration > 5000 && !warned[3]) {
-            cout << "05s no blinking, damage level: SNAKE." << endl;
-            warned[3] = 1;
+        else if (duration > 5000 && !warned[4]) {
+            cout << "05s no blinking, damage level: WOLF." << endl;
+            warned[4] = 1;
             red = 0.25;
         }
         if (state == 1 && sum < sum_threshold) {
