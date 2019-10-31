@@ -1,4 +1,4 @@
-# P002_Data-Logger
+# P003_Data-Logger
 
 "arduino" contains code for 
   * Performing ADC sampling on an Arduino. 
